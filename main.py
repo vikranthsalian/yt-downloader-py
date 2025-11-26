@@ -10,7 +10,7 @@ def create_yt(url, po_token=None):
     Helper to create a YouTube instance with optional po_token.
     """
     if po_token:
-        return YouTube(url, po_token=po_token)
+        return YouTube(url,use_po_token=True)
     return YouTube(url)
 
 def download_video(url, resolution, po_token=None):
