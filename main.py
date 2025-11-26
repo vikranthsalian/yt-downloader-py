@@ -18,7 +18,9 @@ def create_yt(url, po_token=None):
     url = "url"
     
    
-    return YouTube(url, proxies=proxy)
+    yt = YouTube(url, on_progress_callback = on_progress)
+    print(yt.title)
+    return yt
 
 
 def download_video(url, resolution, po_token=None):
