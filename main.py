@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from pytubefix import YouTube
+from pytubefix.cli import on_progress
 import re
 import os
 
@@ -10,7 +11,7 @@ def create_yt(url, po_token=None):
     Helper to create a YouTube instance with optional po_token.
     """
     if po_token:
-        return YouTube(url,use_po_token=True)
+        return YouTube(url, use_oauth=True, allow_oauth_cache=True, on_progress_callback = on_progress)
     return YouTube(url)
 
 def download_video(url, resolution, po_token=None):
