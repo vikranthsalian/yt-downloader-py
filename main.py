@@ -10,8 +10,15 @@ def create_yt(url, po_token=None):
     """
     Helper to create a YouTube instance with optional po_token.
     """
+    proxy = {
+        "http": "socks5://127.0.0.1:9050",
+        "https": "socks5://127.0.0.1:9050 "
+        }
+    
+    url = "url"
+    
     if po_token:
-        return YouTube(url, use_oauth=True, allow_oauth_cache=True, on_progress_callback = on_progress)
+        return YouTube(url, proxies=proxy)
     return YouTube(url)
 
 def download_video(url, resolution, po_token=None):
