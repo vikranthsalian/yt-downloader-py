@@ -5,34 +5,49 @@ import os
 
 app = Flask(__name__)
 
-def download_video(url, resolution):
+def create_yt(url, po_token=None):
+    """
+    Helper to create a YouTube instance with optional po_token.
+    """
+    if po_token:
+        return YouTube(url, po_token=po_token)
+    return YouTube(url)
+
+def download_video(url, resolution, po_token=None):
     try:
-        yt = YouTube(url)
-        
+        yt = create_yt(url, po_token)
+
         # Debug: Print all available streams
         print(f"Available progressive streams for {url}:")
         for stream in yt.streams.filter(progressive=True, file_extension='mp4'):
             print(f"  - {stream.resolution} - {stream.mime_type}")
         
-        stream = yt.streams.filter(progressive=True, file_extension='mp4', resolution=resolution).first()
+        stream = yt.streams.filter(
+            progressive=True,
+            file_extension='mp4',
+            resolution=resolution
+        ).first()
+
         if stream:
             out_dir = f"./downloads/{url.split('v=')[1].split('&')[0]}"
-            import os
             os.makedirs(out_dir, exist_ok=True)
             stream.download(output_path=out_dir)
             return True, None
         else:
             print(f"\nTrying non-progressive streams:")
             for stream in yt.streams.filter(file_extension='mp4', res=resolution):
-                print(f"  - {stream.resolution} - {stream.mime_type} - audio: {stream.includes_audio_track}")
+                print(
+                    f"  - {stream.resolution} - {stream.mime_type} "
+                    f"- audio: {stream.includes_audio_track}"
+                )
             
             return False, "Video with the specified resolution not found."
     except Exception as e:
         return False, str(e)
 
-def get_video_info(url):
+def get_video_info(url, po_token=None):
     try:
-        yt = YouTube(url)
+        yt = create_yt(url, po_token)
         stream = yt.streams.first()
         video_info = {
             "title": yt.title,
@@ -52,16 +67,17 @@ def is_valid_youtube_url(url):
 
 @app.route('/download/<resolution>', methods=['POST'])
 def download_by_resolution(resolution):
-    data = request.get_json()
+    data = request.get_json() or {}
     url = data.get('url')
-    
+    po_token = data.get('po_token')  # optional
+
     if not url:
         return jsonify({"error": "Missing 'url' parameter in the request body."}), 400
 
     if not is_valid_youtube_url(url):
         return jsonify({"error": "Invalid YouTube URL."}), 400
     
-    success, error_message = download_video(url, resolution)
+    success, error_message = download_video(url, resolution, po_token)
     
     if success:
         return jsonify({"message": f"Video with resolution {resolution} downloaded successfully."}), 200
@@ -70,8 +86,9 @@ def download_by_resolution(resolution):
 
 @app.route('/video_info', methods=['POST'])
 def video_info():
-    data = request.get_json()
+    data = request.get_json() or {}
     url = data.get('url')
+    po_token = data.get('po_token')  # optional
     
     if not url:
         return jsonify({"error": "Missing 'url' parameter in the request body."}), 400
@@ -79,18 +96,18 @@ def video_info():
     if not is_valid_youtube_url(url):
         return jsonify({"error": "Invalid YouTube URL."}), 400
     
-    video_info, error_message = get_video_info(url)
+    info, error_message = get_video_info(url, po_token)
     
-    if video_info:
-        return jsonify(video_info), 200
+    if info:
+        return jsonify(info), 200
     else:
         return jsonify({"error": error_message}), 500
 
-
 @app.route('/available_resolutions', methods=['POST'])
 def available_resolutions():
-    data = request.get_json()
+    data = request.get_json() or {}
     url = data.get('url')
+    po_token = data.get('po_token')  # optional
     
     if not url:
         return jsonify({"error": "Missing 'url' parameter in the request body."}), 400
@@ -99,7 +116,7 @@ def available_resolutions():
         return jsonify({"error": "Invalid YouTube URL."}), 400
     
     try:
-        yt = YouTube(url)
+        yt = create_yt(url, po_token)
         progressive_resolutions = list(set([
             stream.resolution 
             for stream in yt.streams.filter(progressive=True, file_extension='mp4')
