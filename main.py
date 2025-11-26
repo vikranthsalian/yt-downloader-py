@@ -15,7 +15,7 @@ def create_yt(url, po_token=None):
     #     "https": "socks5://127.0.0.1:9050"
     #     }
     
-    url = "url"
+    # url = "url"
     
    
     yt = YouTube(url, on_progress_callback = on_progress)
