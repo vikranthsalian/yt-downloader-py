@@ -12,14 +12,14 @@ def create_yt(url, po_token=None):
     """
     proxy = {
         "http": "socks5://127.0.0.1:9050",
-        "https": "socks5://127.0.0.1:9050 "
+        "https": "socks5://127.0.0.1:9050"
         }
     
     url = "url"
     
-    if po_token:
-        return YouTube(url, proxies=proxy)
-    return YouTube(url)
+   
+    return YouTube(url, proxies=proxy)
+
 
 def download_video(url, resolution, po_token=None):
     try:
