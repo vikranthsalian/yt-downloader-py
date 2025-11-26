@@ -82,8 +82,8 @@ def download_by_resolution(resolution):
     if not url:
         return jsonify({"error": "Missing 'url' parameter in the request body."}), 400
 
-    if not is_valid_youtube_url(url):
-        return jsonify({"error": "Invalid YouTube URL."}), 400
+    # if not is_valid_youtube_url(url):
+    #     return jsonify({"error": "Invalid YouTube URL."}), 400
     
     success, error_message = download_video(url, resolution, po_token)
     
