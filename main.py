@@ -45,13 +45,20 @@ def download_video(url, resolution, po_token=None):
             return True, None
         else:
             print(f"\nTrying non-progressive streams:")
-            for stream in yt.streams.filter(file_extension='mp4', res=resolution):
+            
+            available_resolutions = list(set([
+                stream.resolution
+                for stream in yt.streams.filter(file_extension='mp4')
+                if stream.resolution
+            ]))
+            
+            for stream in yt.streams.filter(file_extension='mp4'):
                 print(
                     f"  - {stream.resolution} - {stream.mime_type} "
                     f"- audio: {stream.includes_audio_track}"
                 )
             
-            return False, "Video with the specified resolution not found."
+            return False, f"Video with resolution {resolution} not found. Available resolutions: {sorted(available_resolutions)}"
     except Exception as e:
         return False, str(e)
 
