@@ -9,21 +9,18 @@ app = Flask(__name__)
 
 DOWNLOAD_DIR = "./downloads"
 
-# 🔥 In-memory progress store
+# 🔥 Stores
 DOWNLOAD_PROGRESS = {}
+DOWNLOAD_RESULT = {}
 
 
 # 🔧 Common yt-dlp config
 def get_ydl_opts(extra_opts=None):
     base_opts = {
         "quiet": True,
-
-        # 🔥 Fix 403
         "http_headers": {
             "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
         },
-
-        # 🔥 Android client
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web"]
@@ -64,61 +61,32 @@ def progress_hook(video_id):
     return hook
 
 
-# 📄 Video info
-def get_video_info(url):
-    try:
-        ydl_opts = get_ydl_opts({"skip_download": True})
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-        return {
-            "title": info.get("title"),
-            "author": info.get("uploader"),
-            "length": info.get("duration"),
-            "views": info.get("view_count"),
-            "description": info.get("description"),
-            "publish_date": info.get("upload_date"),
-        }, None
-
-    except Exception as e:
-        return None, str(e)
-
-
-# 📺 Available resolutions
-def get_available_resolutions(url):
-    try:
-        ydl_opts = get_ydl_opts()
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-        resolutions = sorted(set([
-            f"{f.get('height')}p"
-            for f in info.get("formats", [])
-            if f.get("height")
-        ]))
-
-        return resolutions, None
-
-    except Exception as e:
-        return None, str(e)
-
-
-# ⬇️ Actual download logic (runs in thread)
+# ⬇️ Download logic
 def download_video(url, resolution):
     try:
         height = resolution.replace("p", "")
         video_id = get_video_id(url)
-        VIDEO_DIR = DOWNLOAD_DIR+"/"+resolution
+
         DOWNLOAD_PROGRESS[video_id] = "0%"
-    
+        actual_resolution = None
+
+        # ✅ Proper path handling
+        video_dir = os.path.join(DOWNLOAD_DIR, resolution)
+        output_path = os.path.join(video_dir, "%(id)s")
+        os.makedirs(output_path, exist_ok=True)
+
+        # 🎯 Capture actual resolution
+        def result_hook(d):
+            nonlocal actual_resolution
+            if d['status'] == 'finished':
+                info = d.get("info_dict", {})
+                actual_resolution = f"{info.get('height')}p"
 
         ydl_opts = get_ydl_opts({
-            "format": f"bestvideo[height<={height}]+bestaudio/best/best",
-            "outtmpl": os.path.join(VIDEO_DIR, "%(title)s.%(ext)s"),
+            "format": f"bv*[height={height}]+ba/b",
+            "outtmpl": os.path.join(output_path, "%(title)s.%(ext)s"),
             "merge_output_format": "mp4",
-            "progress_hooks": [progress_hook(video_id)],
+            "progress_hooks": [progress_hook(video_id), result_hook],
         })
 
         try:
@@ -126,20 +94,22 @@ def download_video(url, resolution):
                 ydl.download([url])
 
         except Exception:
-            # 🔥 fallback
+            print(f"[{video_id}] Fallback triggered")
+
             fallback_opts = get_ydl_opts({
-                "format": "best",
-                "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
-                "progress_hooks": [progress_hook(video_id)],
+                "format": f"bv*[height<={height}]+ba/b",
+                "outtmpl": os.path.join(output_path, "%(title)s.%(ext)s"),
+                "progress_hooks": [progress_hook(video_id), result_hook],
             })
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 ydl.download([url])
-                
+
+        # 🔥 Store result
         DOWNLOAD_RESULT[video_id] = {
             "requested_resolution": resolution,
             "actual_resolution": actual_resolution or "unknown"
-        }       
+        }
 
     except Exception as e:
         print(f"[ERROR] {e}")
@@ -152,38 +122,6 @@ def home():
     return "YT-DLP API running 🚀"
 
 
-@app.route("/video_info", methods=["POST"])
-def video_info():
-    data = request.get_json() or {}
-    url = data.get("url")
-
-    if not url:
-        return jsonify({"error": "Missing 'url'"}), 400
-
-    info, error = get_video_info(url)
-
-    if info:
-        return jsonify(info), 200
-    else:
-        return jsonify({"error": error}), 500
-
-
-@app.route("/available_resolutions", methods=["POST"])
-def available_resolutions():
-    data = request.get_json() or {}
-    url = data.get("url")
-
-    if not url:
-        return jsonify({"error": "Missing 'url'"}), 400
-
-    resolutions, error = get_available_resolutions(url)
-
-    if resolutions:
-        return jsonify({"available_resolutions": resolutions}), 200
-    else:
-        return jsonify({"error": error}), 500
-
-
 @app.route("/download/<resolution>", methods=["POST"])
 def download(resolution):
     data = request.get_json() or {}
@@ -194,7 +132,7 @@ def download(resolution):
 
     video_id = get_video_id(url)
 
-    # 🔥 Run in background thread
+    # 🔥 Run in background
     thread = threading.Thread(
         target=download_video,
         args=(url, resolution),
@@ -214,6 +152,15 @@ def get_progress(video_id):
         "video_id": video_id,
         "progress": DOWNLOAD_PROGRESS.get(video_id, "0%")
     })
+
+
+@app.route("/result/<video_id>", methods=["GET"])
+def get_result(video_id):
+    return jsonify(
+        DOWNLOAD_RESULT.get(video_id, {
+            "message": "Download in progress or not found"
+        })
+    )
 
 
 # 🚀 Run server
