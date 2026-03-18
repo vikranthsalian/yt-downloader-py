@@ -1,23 +1,27 @@
 from flask import Flask, request, jsonify
 import yt_dlp
 import os
+import re
 
 app = Flask(__name__)
 
 DOWNLOAD_DIR = "./downloads"
 
+# 🔥 In-memory progress store
+DOWNLOAD_PROGRESS = {}
 
-# 🔥 Common yt-dlp base config (reuse everywhere)
+
+# 🔧 Common yt-dlp config
 def get_ydl_opts(extra_opts=None):
     base_opts = {
         "quiet": True,
 
-        # 🔥 Fix 403 (most important)
+        # 🔥 Fix 403
         "http_headers": {
             "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
         },
 
-        # 🔥 Use Android client (very important)
+        # 🔥 Use Android client
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web"]
@@ -31,6 +35,26 @@ def get_ydl_opts(extra_opts=None):
     return base_opts
 
 
+# 🎯 Extract video ID
+def get_video_id(url):
+    match = re.search(r"v=([\w-]+)", url)
+    return match.group(1) if match else "unknown"
+
+
+# 📊 Progress hook
+def progress_hook(video_id):
+    def hook(d):
+        if d['status'] == 'downloading':
+            percent = d.get('_percent_str', '0%').strip()
+            DOWNLOAD_PROGRESS[video_id] = percent
+
+        elif d['status'] == 'finished':
+            DOWNLOAD_PROGRESS[video_id] = "100%"
+
+    return hook
+
+
+# 📄 Video info
 def get_video_info(url):
     try:
         ydl_opts = get_ydl_opts({"skip_download": True})
@@ -53,6 +77,7 @@ def get_video_info(url):
         return None, str(e)
 
 
+# 📺 Available resolutions
 def get_available_resolutions(url):
     try:
         ydl_opts = get_ydl_opts()
@@ -72,27 +97,34 @@ def get_available_resolutions(url):
         return None, str(e)
 
 
+# ⬇️ Download video
 def download_video(url, resolution):
     try:
         height = resolution.replace("p", "")
+        video_id = get_video_id(url)
 
-        # 🔥 Try preferred format first
+        DOWNLOAD_PROGRESS[video_id] = "0%"
+
+        # 🔥 Try requested resolution
         ydl_opts = get_ydl_opts({
             "format": f"bestvideo[height<={height}]+bestaudio/best",
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
             "merge_output_format": "mp4",
+            "progress_hooks": [progress_hook(video_id)],
         })
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
+
             return True, None
 
         except Exception:
-            # 🔥 Fallback to best (very important)
+            # 🔥 Fallback to best
             fallback_opts = get_ydl_opts({
                 "format": "best",
                 "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
+                "progress_hooks": [progress_hook(video_id)],
             })
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
@@ -103,6 +135,8 @@ def download_video(url, resolution):
     except Exception as e:
         return False, str(e)
 
+
+# 🌐 Routes
 
 @app.route("/")
 def home():
@@ -154,12 +188,23 @@ def download(resolution):
     if success:
         return jsonify({
             "message": "Download completed",
-            "note": error  # might contain fallback info
+            "note": error
         }), 200
     else:
         return jsonify({"error": error}), 500
 
 
+@app.route("/progress/<video_id>", methods=["GET"])
+def get_progress(video_id):
+    progress = DOWNLOAD_PROGRESS.get(video_id, "0%")
+
+    return jsonify({
+        "video_id": video_id,
+        "progress": progress
+    })
+
+
+# 🚀 Run server
 if __name__ == "__main__":
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     port = int(os.environ.get("PORT", 8888))
