@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import yt_dlp
 import os
 import re
+import sys
 
 app = Flask(__name__)
 
@@ -21,7 +22,7 @@ def get_ydl_opts(extra_opts=None):
             "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
         },
 
-        # 🔥 Use Android client
+        # 🔥 Android client
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web"]
@@ -41,15 +42,24 @@ def get_video_id(url):
     return match.group(1) if match else "unknown"
 
 
-# 📊 Progress hook
+# 📊 Progress hook (PRINTS + STORES)
 def progress_hook(video_id):
     def hook(d):
         if d['status'] == 'downloading':
             percent = d.get('_percent_str', '0%').strip()
+            speed = d.get('_speed_str', '').strip()
+            eta = d.get('_eta_str', '').strip()
+
             DOWNLOAD_PROGRESS[video_id] = percent
+
+            # 🔥 Print to terminal
+            print(f"[{video_id}] {percent} | Speed: {speed} | ETA: {eta}")
+            sys.stdout.flush()
 
         elif d['status'] == 'finished':
             DOWNLOAD_PROGRESS[video_id] = "100%"
+            print(f"[{video_id}] Download completed ✅")
+            sys.stdout.flush()
 
     return hook
 
@@ -107,7 +117,7 @@ def download_video(url, resolution):
 
         # 🔥 Try requested resolution
         ydl_opts = get_ydl_opts({
-            "format": f"bestvideo[height<={height}]+bestaudio/best",
+            "format": f"bestvideo[height<={height}]+bestaudio/best/best",
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
             "merge_output_format": "mp4",
             "progress_hooks": [progress_hook(video_id)],
@@ -208,4 +218,6 @@ def get_progress(video_id):
 if __name__ == "__main__":
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     port = int(os.environ.get("PORT", 8888))
-    app.run(host="0.0.0.0", port=port)
+
+    # 🔥 Important for real-time logs
+    app.run(host="0.0.0.0", port=port, debug=False)
