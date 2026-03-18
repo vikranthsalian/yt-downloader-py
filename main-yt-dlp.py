@@ -135,6 +135,11 @@ def download_video(url, resolution):
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 ydl.download([url])
+                
+        DOWNLOAD_RESULT[video_id] = {
+            "requested_resolution": resolution,
+            "actual_resolution": actual_resolution or "unknown"
+        }       
 
     except Exception as e:
         print(f"[ERROR] {e}")
