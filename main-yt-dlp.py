@@ -7,12 +7,33 @@ app = Flask(__name__)
 DOWNLOAD_DIR = "./downloads"
 
 
+# 🔥 Common yt-dlp base config (reuse everywhere)
+def get_ydl_opts(extra_opts=None):
+    base_opts = {
+        "quiet": True,
+
+        # 🔥 Fix 403 (most important)
+        "http_headers": {
+            "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+        },
+
+        # 🔥 Use Android client (very important)
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"]
+            }
+        }
+    }
+
+    if extra_opts:
+        base_opts.update(extra_opts)
+
+    return base_opts
+
+
 def get_video_info(url):
     try:
-        ydl_opts = {
-            "quiet": True,
-            "skip_download": True
-        }
+        ydl_opts = get_ydl_opts({"skip_download": True})
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -34,18 +55,18 @@ def get_video_info(url):
 
 def get_available_resolutions(url):
     try:
-        ydl_opts = {"quiet": True}
+        ydl_opts = get_ydl_opts()
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        resolutions = list(set([
+        resolutions = sorted(set([
             f"{f.get('height')}p"
             for f in info.get("formats", [])
             if f.get("height")
         ]))
 
-        return sorted(resolutions), None
+        return resolutions, None
 
     except Exception as e:
         return None, str(e)
@@ -55,25 +76,29 @@ def download_video(url, resolution):
     try:
         height = resolution.replace("p", "")
 
-        ydl_opts = {
+        # 🔥 Try preferred format first
+        ydl_opts = get_ydl_opts({
             "format": f"bestvideo[height<={height}]+bestaudio/best",
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
             "merge_output_format": "mp4",
+        })
 
-            # 🔥 Fix 403
-            "http_headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                )
-            }
-        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return True, None
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        except Exception:
+            # 🔥 Fallback to best (very important)
+            fallback_opts = get_ydl_opts({
+                "format": "best",
+                "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
+            })
 
-        return True, None
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                ydl.download([url])
+
+            return True, f"{resolution} not available, downloaded best quality instead"
 
     except Exception as e:
         return False, str(e)
@@ -127,7 +152,10 @@ def download(resolution):
     success, error = download_video(url, resolution)
 
     if success:
-        return jsonify({"message": f"Downloaded in {resolution}"}), 200
+        return jsonify({
+            "message": "Download completed",
+            "note": error  # might contain fallback info
+        }), 200
     else:
         return jsonify({"error": error}), 500
 
