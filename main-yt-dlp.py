@@ -62,9 +62,13 @@ def progress_hook(video_id):
 
 # ⬇️ Download logic
 def download_video(url, resolution):
+    video_id = get_video_id(url)
+
+    # ✅ ALWAYS define first
+    actual_resolution = "unknown"
+
     try:
         height = resolution.replace("p", "")
-        video_id = get_video_id(url)
 
         DOWNLOAD_PROGRESS[video_id] = "0%"
 
@@ -79,13 +83,15 @@ def download_video(url, resolution):
             "progress_hooks": [progress_hook(video_id)],
         })
 
-        actual_resolution = "unknown"
-
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                if info:
-                    actual_resolution = f"{info.get('height')}p"
+
+                # ✅ Safe resolution extraction
+                if info and isinstance(info, dict):
+                    height_val = info.get("height")
+                    if height_val:
+                        actual_resolution = f"{height_val}p"
 
         except Exception:
             print(f"[{video_id}] Fallback triggered")
@@ -98,17 +104,20 @@ def download_video(url, resolution):
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                if info:
-                    actual_resolution = f"{info.get('height')}p"
 
-        # 🔥 Store result safely
-        DOWNLOAD_RESULT[video_id] = {
-            "requested_resolution": resolution,
-            "actual_resolution": actual_resolution
-        }
+                if info and isinstance(info, dict):
+                    height_val = info.get("height")
+                    if height_val:
+                        actual_resolution = f"{height_val}p"
 
     except Exception as e:
         print(f"[ERROR] {e}")
+
+    # ✅ ALWAYS store result (outside try)
+    DOWNLOAD_RESULT[video_id] = {
+        "requested_resolution": resolution,
+        "actual_resolution": actual_resolution
+    }
 
 
 # 🌐 Routes
