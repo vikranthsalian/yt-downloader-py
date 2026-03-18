@@ -3,6 +3,7 @@ import yt_dlp
 import os
 import re
 import sys
+import threading
 
 app = Flask(__name__)
 
@@ -42,7 +43,7 @@ def get_video_id(url):
     return match.group(1) if match else "unknown"
 
 
-# 📊 Progress hook (PRINTS + STORES)
+# 📊 Progress hook
 def progress_hook(video_id):
     def hook(d):
         if d['status'] == 'downloading':
@@ -52,7 +53,6 @@ def progress_hook(video_id):
 
             DOWNLOAD_PROGRESS[video_id] = percent
 
-            # 🔥 Print to terminal
             print(f"[{video_id}] {percent} | Speed: {speed} | ETA: {eta}")
             sys.stdout.flush()
 
@@ -72,16 +72,14 @@ def get_video_info(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        video_info = {
+        return {
             "title": info.get("title"),
             "author": info.get("uploader"),
             "length": info.get("duration"),
             "views": info.get("view_count"),
             "description": info.get("description"),
             "publish_date": info.get("upload_date"),
-        }
-
-        return video_info, None
+        }, None
 
     except Exception as e:
         return None, str(e)
@@ -107,7 +105,7 @@ def get_available_resolutions(url):
         return None, str(e)
 
 
-# ⬇️ Download video
+# ⬇️ Actual download logic (runs in thread)
 def download_video(url, resolution):
     try:
         height = resolution.replace("p", "")
@@ -115,7 +113,6 @@ def download_video(url, resolution):
 
         DOWNLOAD_PROGRESS[video_id] = "0%"
 
-        # 🔥 Try requested resolution
         ydl_opts = get_ydl_opts({
             "format": f"bestvideo[height<={height}]+bestaudio/best/best",
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
@@ -127,10 +124,8 @@ def download_video(url, resolution):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            return True, None
-
         except Exception:
-            # 🔥 Fallback to best
+            # 🔥 fallback
             fallback_opts = get_ydl_opts({
                 "format": "best",
                 "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
@@ -140,10 +135,8 @@ def download_video(url, resolution):
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 ydl.download([url])
 
-            return True, f"{resolution} not available, downloaded best quality instead"
-
     except Exception as e:
-        return False, str(e)
+        print(f"[ERROR] {e}")
 
 
 # 🌐 Routes
@@ -193,24 +186,27 @@ def download(resolution):
     if not url:
         return jsonify({"error": "Missing 'url'"}), 400
 
-    success, error = download_video(url, resolution)
+    video_id = get_video_id(url)
 
-    if success:
-        return jsonify({
-            "message": "Download completed",
-            "note": error
-        }), 200
-    else:
-        return jsonify({"error": error}), 500
+    # 🔥 Run in background thread
+    thread = threading.Thread(
+        target=download_video,
+        args=(url, resolution),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({
+        "message": "Download started",
+        "video_id": video_id
+    }), 200
 
 
 @app.route("/progress/<video_id>", methods=["GET"])
 def get_progress(video_id):
-    progress = DOWNLOAD_PROGRESS.get(video_id, "0%")
-
     return jsonify({
         "video_id": video_id,
-        "progress": progress
+        "progress": DOWNLOAD_PROGRESS.get(video_id, "0%")
     })
 
 
@@ -218,6 +214,4 @@ def get_progress(video_id):
 if __name__ == "__main__":
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     port = int(os.environ.get("PORT", 8888))
-
-    # 🔥 Important for real-time logs
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port)
