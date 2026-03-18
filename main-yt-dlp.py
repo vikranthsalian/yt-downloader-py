@@ -49,7 +49,6 @@ def progress_hook(video_id):
             eta = d.get('_eta_str', '').strip()
 
             DOWNLOAD_PROGRESS[video_id] = percent
-
             print(f"[{video_id}] {percent} | Speed: {speed} | ETA: {eta}")
             sys.stdout.flush()
 
@@ -63,12 +62,13 @@ def progress_hook(video_id):
 
 # ⬇️ Download logic
 def download_video(url, resolution):
+    actual_resolution = None  # ✅ FIX: define at top
+
     try:
         height = resolution.replace("p", "")
         video_id = get_video_id(url)
 
         DOWNLOAD_PROGRESS[video_id] = "0%"
-        actual_resolution = None
 
         # ✅ Proper path handling
         video_dir = os.path.join(DOWNLOAD_DIR, resolution)
@@ -132,7 +132,7 @@ def download(resolution):
 
     video_id = get_video_id(url)
 
-    # 🔥 Run in background
+    # 🔥 Background thread
     thread = threading.Thread(
         target=download_video,
         args=(url, resolution),
