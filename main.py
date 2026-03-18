@@ -32,33 +32,39 @@ def download_video(url, resolution, po_token=None):
         for stream in yt.streams.filter(progressive=True, file_extension='mp4'):
             print(f"  - {stream.resolution} - {stream.mime_type}")
         
-        stream = yt.streams.filter(
+            stream = yt.streams.filter(
             progressive=True,
             file_extension='mp4',
             resolution=resolution
         ).first()
-
+        
         if stream:
-            out_dir = f"./downloads/{url.split('v=')[1].split('&')[0]}"
+            # normal download
+            out_dir = f"./downloads/{video_id}"
             os.makedirs(out_dir, exist_ok=True)
             stream.download(output_path=out_dir)
             return True, None
-        else:
-            print(f"\nTrying non-progressive streams:")
+        
+        # 👇 fallback to non-progressive (video only)
+        video_stream = yt.streams.filter(
+            file_extension='mp4',
+            resolution=resolution,
+            only_video=True
+        ).first()
+        
+        if video_stream:
+            out_dir = f"./downloads/{video_id}"
+            os.makedirs(out_dir, exist_ok=True)
+            video_stream.download(output_path=out_dir)
             
-            available_resolutions = list(set([
-                stream.resolution
-                for stream in yt.streams.filter(file_extension='mp4')
-                if stream.resolution
-            ]))
-            
-            for stream in yt.streams.filter(file_extension='mp4'):
-                print(
-                    f"  - {stream.resolution} - {stream.mime_type} "
-                    f"- audio: {stream.includes_audio_track}"
-                )
-            
-            return False, f"Video with resolution {resolution} not found. Available resolutions: {sorted(available_resolutions)}"
+            return True, f"{resolution} downloaded (video only, no audio)"
+        
+        # ❌ if nothing found
+        available_resolutions = list(set([
+            s.resolution for s in yt.streams.filter(file_extension='mp4') if s.resolution
+        ]))
+        
+        return False, f"Resolution {resolution} not available. Available: {sorted(available_resolutions)}"
     except Exception as e:
         return False, str(e)
 
