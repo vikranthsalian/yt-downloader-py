@@ -67,10 +67,10 @@ def download_video(url, resolution):
             }
          }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        return True, None
+         return True, None
 
     except Exception as e:
         return False, str(e)
