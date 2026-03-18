@@ -112,10 +112,12 @@ def download_video(url, resolution):
         video_id = get_video_id(url)
 
         DOWNLOAD_PROGRESS[video_id] = "0%"
+        output_path = os.path.join(DOWNLOAD_DIR, resolution, "%(id)s")
+        os.makedirs(output_path, exist_ok=True)
 
         ydl_opts = get_ydl_opts({
             "format": f"bestvideo[height<={height}]+bestaudio/best/best",
-            "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s/%(title)s.%(ext)s"),
+            "outtmpl": os.path.join(output_path, "%(title)s.%(ext)s"),
             "merge_output_format": "mp4",
             "progress_hooks": [progress_hook(video_id)],
         })
