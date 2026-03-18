@@ -62,36 +62,30 @@ def progress_hook(video_id):
 
 # ⬇️ Download logic
 def download_video(url, resolution):
-    actual_resolution = None  # ✅ FIX: define at top
-
     try:
         height = resolution.replace("p", "")
         video_id = get_video_id(url)
 
         DOWNLOAD_PROGRESS[video_id] = "0%"
 
-        # ✅ Proper path handling
         video_dir = os.path.join(DOWNLOAD_DIR, resolution)
         output_path = os.path.join(video_dir, "%(id)s")
         os.makedirs(output_path, exist_ok=True)
-
-        # 🎯 Capture actual resolution
-        def result_hook(d):
-            nonlocal actual_resolution
-            if d['status'] == 'finished':
-                info = d.get("info_dict", {})
-                actual_resolution = f"{info.get('height')}p"
 
         ydl_opts = get_ydl_opts({
             "format": f"bv*[height={height}]+ba/b",
             "outtmpl": os.path.join(output_path, "%(title)s.%(ext)s"),
             "merge_output_format": "mp4",
-            "progress_hooks": [progress_hook(video_id), result_hook],
+            "progress_hooks": [progress_hook(video_id)],
         })
+
+        actual_resolution = "unknown"
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    actual_resolution = f"{info.get('height')}p"
 
         except Exception:
             print(f"[{video_id}] Fallback triggered")
@@ -99,16 +93,18 @@ def download_video(url, resolution):
             fallback_opts = get_ydl_opts({
                 "format": f"bv*[height<={height}]+ba/b",
                 "outtmpl": os.path.join(output_path, "%(title)s.%(ext)s"),
-                "progress_hooks": [progress_hook(video_id), result_hook],
+                "progress_hooks": [progress_hook(video_id)],
             })
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                ydl.download([url])
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    actual_resolution = f"{info.get('height')}p"
 
-        # 🔥 Store result
+        # 🔥 Store result safely
         DOWNLOAD_RESULT[video_id] = {
             "requested_resolution": resolution,
-            "actual_resolution": actual_resolution or "unknown"
+            "actual_resolution": actual_resolution
         }
 
     except Exception as e:
@@ -132,7 +128,6 @@ def download(resolution):
 
     video_id = get_video_id(url)
 
-    # 🔥 Background thread
     thread = threading.Thread(
         target=download_video,
         args=(url, resolution),
