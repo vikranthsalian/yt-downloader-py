@@ -18,7 +18,7 @@ def create_yt(url, po_token=None):
     # url = "url"
     
    
-    yt = YouTube(url, proxies=proxy)
+    yt = YouTube(url)
     print(yt.title)
     return yt
 
